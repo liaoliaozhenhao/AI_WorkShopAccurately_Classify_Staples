@@ -21,89 +21,60 @@ CATEGORIES = [
 QUOTA_FACTOR_CAI = 1.15  # 只对“采”做配额限制  1.1~1.3 就改这里
 
 # 逻辑角色 -> 具体模型名称（和 get_llm 参数对应）
-# LLM_ROUTES = {
-#     "router": "deepSeek",              # 分类路由智能体用哪个模型
-#     "subject_humanities": "deepSeek",  # 人文学科评估
-#     "subject_social": "deepSeek",
-#     "subject_stem": "tongyi",
-#     "subject_language": "tongyi",
-#     "subject_arts": "tongyi",
-#     "subject_other": "deepSeek",
-#     "policy": "hunyuan",              # 最终 policy 审查用混元
-#     "default": "local",
-#     # 你也可以加更多角色，比如 "debug" 等
-# }
-
 LLM_ROUTES = {
     "router": "deepSeek",              # 分类路由智能体用哪个模型
     "subject_humanities": "deepSeek",  # 人文学科评估
     "subject_social": "deepSeek",
-    "subject_stem": "deepSeek",
-    "subject_language": "deepSeek",
-    "subject_arts": "deepSeek",
+    "subject_stem": "tongyi",
+    "subject_language": "tongyi",
+    "subject_arts": "tongyi",
     "subject_other": "deepSeek",
-    "policy": "deepSeek",              # 最终 policy 审查用混元
-    "default": "deepSeek",
+    "policy": "hunyuan",              # 最终 policy 审查用混元
+    "default": "local",
     # 你也可以加更多角色，比如 "debug" 等
 }
 
-LLM_key={
-    "tongyi": "sk-f61048a35d2e4c08a64696b07e555b5e",              # 分类路由智能体用哪个模型
-    "deepSeek": "sk-f653b7558f204594b0367a4c8de9575f",  # 人文学科评估
-    "hunyuan": "sk-UkDb0WCd2gvMgZO7aUvlXGUtOlNxcrJsjlLaXZTvUeBwzgtD",
+LLM_key = {
+    # ===== OpenAI 官方（GPT-4o / GPT-4o mini / GPT-3.5 等）=====
+    "openai": os.getenv("OPENAI_API_KEY"),
+    # 可选：如果你走代理/网关（兼容 OpenAI），填这个；不用就留空
+    "openai_base_url": os.getenv("OPENAI_BASE_URL"),
 
-    "openai": "sk-...",
-    "openai_base_url": None,  # 不用可留空
+    # ===== DeepSeek =====
+    # 你之前用的是 LLM_key.get("deepSeek")，建议保留这个键名以兼容旧代码
+    "deepSeek": os.getenv("DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_KEY"),
 
-    "openrouter": "sk-...",
-    "openrouter_base_url": "https://openrouter.ai/api/v1",
+    # ===== 通义千问（DashScope / Tongyi）=====
+    "tongyi": os.getenv("DASHSCOPE_API_KEY") or os.getenv("TONGYI_API_KEY"),
 
-    "groq": "gsk_...",
-    "groq_base_url": "https://api.groq.com/openai/v1",
+    # ===== 腾讯混元 =====
+    "hunyuan": os.getenv("HUNYUAN_API_KEY"),
+    "hunyuan_base_url": os.getenv("HUNYUAN_BASE_URL") or "https://api.hunyuan.cloud.tencent.com/v1",
 
-    "ollama_base_url": "http://localhost:11434",
+    # ===== 本地 Ollama（跑 Llama/Qwen/DeepSeek-R1 本地模型）=====
+    "ollama_base_url": os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_HOST") or "http://127.0.0.1:11434",
+
+    # ===== OpenAI-compatible 平台（可选项：你用哪个就配哪个）=====
+    # OpenRouter
+    "openrouter": os.getenv("OPENROUTER_API_KEY"),
+    "openrouter_base_url": os.getenv("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1",
+
+    # Groq（如果你用）
+    "groq": os.getenv("GROQ_API_KEY"),
+    "groq_base_url": os.getenv("GROQ_BASE_URL") or "https://api.groq.com/openai/v1",
+
+    # Together（如果你用）
+    "together": os.getenv("TOGETHER_API_KEY"),
+    "together_base_url": os.getenv("TOGETHER_BASE_URL") or "https://api.together.xyz/v1",
+
+    # Fireworks（如果你用）
+    "fireworks": os.getenv("FIREWORKS_API_KEY"),
+    "fireworks_base_url": os.getenv("FIREWORKS_BASE_URL") or "https://api.fireworks.ai/inference/v1",
+
+    # 自建 vLLM / One-API / 任何 OpenAI-compatible 网关（推荐统一用这一组）
+    "OPENAI_COMPAT_API_KEY": os.getenv("OPENAI_COMPAT_API_KEY"),
+    "OPENAI_COMPAT_BASE_URL": os.getenv("OPENAI_COMPAT_BASE_URL"),
 }
-# LLM_key = {
-#     # ===== OpenAI 官方（GPT-4o / GPT-4o mini / GPT-3.5 等）=====
-#     "openai": os.getenv("OPENAI_API_KEY"),
-#     # 可选：如果你走代理/网关（兼容 OpenAI），填这个；不用就留空
-#     "openai_base_url": os.getenv("OPENAI_BASE_URL"),
-#
-#     # ===== DeepSeek =====
-#     # 你之前用的是 LLM_key.get("deepSeek")，建议保留这个键名以兼容旧代码
-#     "deepSeek": os.getenv("DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_KEY"),
-#
-#     # ===== 通义千问（DashScope / Tongyi）=====
-#     "tongyi": os.getenv("DASHSCOPE_API_KEY") or os.getenv("TONGYI_API_KEY"),
-#
-#     # ===== 腾讯混元 =====
-#     "hunyuan": os.getenv("HUNYUAN_API_KEY"),
-#     "hunyuan_base_url": os.getenv("HUNYUAN_BASE_URL") or "https://api.hunyuan.cloud.tencent.com/v1",
-#
-#     # ===== 本地 Ollama（跑 Llama/Qwen/DeepSeek-R1 本地模型）=====
-#     "ollama_base_url": os.getenv("OLLAMA_BASE_URL") or os.getenv("OLLAMA_HOST") or "http://127.0.0.1:11434",
-#
-#     # ===== OpenAI-compatible 平台（可选项：你用哪个就配哪个）=====
-#     # OpenRouter
-#     "openrouter": os.getenv("OPENROUTER_API_KEY"),
-#     "openrouter_base_url": os.getenv("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1",
-#
-#     # Groq（如果你用）
-#     "groq": os.getenv("GROQ_API_KEY"),
-#     "groq_base_url": os.getenv("GROQ_BASE_URL") or "https://api.groq.com/openai/v1",
-#
-#     # Together（如果你用）
-#     "together": os.getenv("TOGETHER_API_KEY"),
-#     "together_base_url": os.getenv("TOGETHER_BASE_URL") or "https://api.together.xyz/v1",
-#
-#     # Fireworks（如果你用）
-#     "fireworks": os.getenv("FIREWORKS_API_KEY"),
-#     "fireworks_base_url": os.getenv("FIREWORKS_BASE_URL") or "https://api.fireworks.ai/inference/v1",
-#
-#     # 自建 vLLM / One-API / 任何 OpenAI-compatible 网关（推荐统一用这一组）
-#     "OPENAI_COMPAT_API_KEY": os.getenv("OPENAI_COMPAT_API_KEY"),
-#     "OPENAI_COMPAT_BASE_URL": os.getenv("OPENAI_COMPAT_BASE_URL"),
-# }
 
 
 
