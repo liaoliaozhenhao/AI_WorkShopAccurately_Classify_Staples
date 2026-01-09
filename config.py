@@ -37,7 +37,7 @@ LLM_ROUTES = {
 LLM_key = {
     # ===== OpenAI 官方（GPT-4o / GPT-4o mini / GPT-3.5 等）=====
     "openai": os.getenv("OPENAI_API_KEY"),
-    # 可选：如果你走代理/网关（兼容 OpenAI），填这个；不用就留空
+    # 可选：如果走代理/网关（兼容 OpenAI），填这个；不用就留空
     "openai_base_url": os.getenv("OPENAI_BASE_URL"),
 
     # ===== DeepSeek =====
