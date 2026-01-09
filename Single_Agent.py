@@ -2,10 +2,12 @@ import os
 
 import re
 from functools import lru_cache
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 from pathlib import Path
 from typing import List, Dict, Any
 import json
+
+from langchain_core.language_models import BaseChatModel
 from langchain_openai import ChatOpenAI  # pip install langchain-openai
 from config import LLM_ROUTES,LLM_key
 import os
@@ -16,102 +18,213 @@ try:
     USE_TONGYI = True
 except ImportError:
     USE_TONGYI = False
-# # 构建阿里云百炼大模型客户端
-# llm = ChatTongyi(
-#     model="qwen-turbo",
-#     api_key="sk-f61048a35d2e4c08a64696b07e555b5e",
-# )
-
-# # 示例二：构建 deepseek 的大语言模型
-# from langchain_deepseek import ChatDeepSeek
-# llm = ChatDeepSeek(
-#     model="deepseek-chat",
-#     api_key="sk-f653b7558f204594b0367a4c8de9575f",       #需在AI模型的的官网上申请，例如sk-XXXXX
-# )
 
 
+def get_llm(
+    llm_name: str = "deepSeek",
+    *,
+    temperature: float = 0.7,
+    max_tokens: Optional[int] = 512,
+    timeout: Optional[float] = 60,
+    streaming: bool = False,
+    # 给 OpenAI-compatible / Ollama 等预留扩展参数
+    base_url: Optional[str] = None,
+    **kwargs: Any,
+) -> BaseChatModel:
+    """
+    统一入口：传入模型名称即可返回可用的 chat model（用于 LangGraph 节点里 llm.invoke）。
+    """
 
-# # 示例三：构建 腾讯混元 的大语言模型
-# import os
-# from langchain_openai import ChatOpenAI
-# # ====== 配置腾讯混元 API ======
-# # 腾讯混元 API 文档：https://cloud.tencent.com/document/product/1729
-# os.environ["OPENAI_API_KEY"] = "<API Key>"  # 替换为腾讯云控制台获取的 API Key
-# os.environ["OPENAI_API_BASE"] = "https://api.hunyuan.cloud.tencent.com/v1"  # 腾讯混元 OpenAI 兼容地址
-#
-# llm = ChatOpenAI(
-#     model="hunyuan-lite",  # 模型名称，可换成 hunyuan-pro/hunyuan-standard 等
-#     temperature=0.7,
-#     max_tokens=512
-# )
+    provider, model = _split_provider(llm_name)
+    low = (llm_name or "").lower()
 
+    # ------------- 1) provider 自动推断（兼容原来的 deepSeek/tongyi/hunyuan/local 写法） -------------
+    if provider is None:
+        # 兼容旧写法：包含关键字即走对应 provider（就是这么写的）:contentReference[oaicite:3]{index=3}
+        if "tongyi" in low or "qwen" in low:
+            provider = "tongyi"
+            model = "qwen-turbo" if model == llm_name else model
+        elif "deepseek" in low:
+            provider = "deepseek"
+            model = "deepseek-chat" if model == llm_name else model
+        elif "hunyuan" in low:
+            provider = "hunyuan"
+            model = "hunyuan-lite" if model == llm_name else model
+        elif low in {"local", "ollama"} or "ollama" in low:
+            provider = "ollama"
+            model = "qwen2.5:latest" if model == llm_name else model
+        # 直接传 OpenAI 模型名（gpt-4o / gpt-3.5-turbo）
+        elif low.startswith("gpt-") or low.startswith("o1-") or low.startswith("chatgpt-"):
+            provider = "openai"
+        # 直接传 llama / 本地 tag（llama3.1 / qwen2.5:latest）
+        elif ("llama" in low) or (":" in model and "/" not in model):
+            provider = "ollama"
+        else:
+            # 兜底：默认用 OpenAI（也可以改成 tongyi）
+            provider = "openai"
 
-# # 示例四 使用本地安装的qwen2.5模型执行推理
-# from langchain_ollama import ChatOllama
-# # 初始化模型
-# llm = ChatOllama(
-#     # model="qwen3:4b",  # 必须包含完整模型名称和tag
-#     model="qwen2.5:latest",  # 必须包含完整模型名称和tag
-#     # model="deepseek-r1:14b",  # 必须包含完整模型名称和tag
-#     # model="qwen2.5:32b",  # 必须包含完整模型名称和tag
-#     base_url="http://localhost:11434",  # Ollama默认地址
-#     num_gpu=999,  # 使用所有GPU层
-#     num_thread=8,   # CPU线程数
-#     temperature=0.7,
-#     num_ctx=32768,  # 上下文长度
-# )
+    provider = provider.lower()
 
-def get_llm(llm_name:str="deepSeek") -> ChatOpenAI:
-    """返回一个通用对话模型，用于分类和学科评估"""
-    if "tongyi" in llm_name:
-        # 示例一：使用 LangChain 的 ChatTongyi
-        from langchain_community.chat_models import ChatTongyi
-        # 构建阿里云百炼大模型客户端
-        llm = ChatTongyi(
-            model="qwen-turbo",
-            api_key=LLM_key.get("tongyi"),
-        )
-    elif "deepSeek" in llm_name:
-        # 示例二：构建 deepseek 的大语言模型
-        from langchain_deepseek import ChatDeepSeek
-        llm = ChatDeepSeek(
-            model="deepseek-chat",
-            api_key=LLM_key.get("deepSeek"),  # 需在AI模型的的官网上申请，例如sk-XXXXX
-        )
-    elif "hunyuan" in llm_name:
-        # 示例三：构建 腾讯混元 的大语言模型
+    # ------------- 2) OpenAI 官方（GPT-3.5 / GPT-4o / GPT-4.1 ...） -------------
+    if provider in {"openai", "oai"}:
         from langchain_openai import ChatOpenAI
-        # 腾讯混元 API 文档：https://cloud.tencent.com/document/product/1729
-        os.environ["OPENAI_API_KEY"] = LLM_key.get("hunyuan")  # 替换为腾讯云控制台获取的 API Key
-        os.environ["OPENAI_API_BASE"] = "https://api.hunyuan.cloud.tencent.com/v1"  # 腾讯混元 OpenAI 兼容地址
-        llm = ChatOpenAI(
-            model="hunyuan-lite",  # 模型名称，可换成 hunyuan-pro/hunyuan-standard 等
-            temperature=0.7,
-            max_tokens=512
+        api_key = _get_secret("openai", "OPENAI_API_KEY")
+        # 可选：自建网关时也可以走这个
+        final_base_url = base_url or _get_secret("openai_base_url", "OPENAI_BASE_URL")
+
+        if not api_key and not final_base_url:
+            raise EnvironmentError("未配置 OPENAI_API_KEY（或 OPENAI_BASE_URL/openai_base_url）。")
+
+        params = dict(
+            model=model,
+            api_key=api_key,
+            temperature=temperature,
+            timeout=timeout,
+            streaming=streaming,
+            **kwargs,
         )
-    elif "local" in llm_name:
-        # 示例四 使用本地安装的qwen2.5模型执行推理
-        from langchain_ollama import ChatOllama
-        # 初始化模型
-        llm = ChatOllama(
-            # model="qwen3:4b",  # 必须包含完整模型名称和tag
-            model="qwen2.5:latest",  # 必须包含完整模型名称和tag
-            # model="deepseek-r1:14b",  # 必须包含完整模型名称和tag
-            base_url="http://localhost:11434",  # Ollama默认地址
-            num_gpu=999,  # 使用所有GPU层
-            num_thread=8,   # CPU线程数
-            temperature=0.7,
-            num_ctx=32768,  # 上下文长度
-        )
-    else:
-        # 示例一：使用 LangChain 的 ChatTongyi
+        if max_tokens is not None:
+            params["max_tokens"] = max_tokens
+        if final_base_url:
+            params["base_url"] = final_base_url
+
+        return ChatOpenAI(**params)
+
+    # ------------- 3) DeepSeek -------------
+    if provider in {"deepseek"}:
+        from langchain_deepseek import ChatDeepSeek
+
+        api_key = _get_secret("deepSeek", "deepseek", "DEEPSEEK_API_KEY", "DEEPSEEK_KEY")
+        if not api_key:
+            raise EnvironmentError("未配置 deepseek 的 key（deepSeek/DEEPSEEK_API_KEY）。")
+
+        params = dict(model=model or "deepseek-chat", api_key=api_key, temperature=temperature, **kwargs)
+        if max_tokens is not None:
+            params["max_tokens"] = max_tokens
+        return ChatDeepSeek(**params)
+
+    # ------------- 4) 通义千问 Tongyi/Qwen -------------
+    if provider in {"tongyi", "qwen"}:
         from langchain_community.chat_models import ChatTongyi
-        # 构建阿里云百炼大模型客户端
-        llm = ChatTongyi(
-            model="qwen-turbo",
-            api_key=LLM_key.get("tongyi"),
+
+        api_key = _get_secret("tongyi", "TONGYI_API_KEY", "DASHSCOPE_API_KEY")
+        if not api_key:
+            raise EnvironmentError("未配置 tongyi 的 key（tongyi/TONGYI_API_KEY/DASHSCOPE_API_KEY）。")
+
+        # ChatTongyi 不同版本对 timeout/streaming 参数兼容不一，尽量少塞
+        params = dict(model=model or "qwen-turbo", api_key=api_key, temperature=temperature, **kwargs)
+        if max_tokens is not None:
+            params["max_tokens"] = max_tokens
+        return ChatTongyi(**params)
+
+    # ------------- 5) 腾讯混元（OpenAI-compatible，避免修改 os.environ 全局变量） -------------
+    if provider in {"hunyuan"}:
+        from langchain_openai import ChatOpenAI
+
+        api_key = _get_secret("hunyuan", "HUNYUAN_API_KEY")
+        if not api_key:
+            raise EnvironmentError("未配置 hunyuan 的 key（hunyuan/HUNYUAN_API_KEY）。")
+
+        final_base_url = base_url or "https://api.hunyuan.cloud.tencent.com/v1"
+
+        params = dict(
+            model=model or "hunyuan-lite",
+            api_key=api_key,
+            base_url=final_base_url,
+            temperature=temperature,
+            timeout=timeout,
+            streaming=streaming,
+            **kwargs,
         )
-    return llm
+        if max_tokens is not None:
+            params["max_tokens"] = max_tokens
+        return ChatOpenAI(**params)
+
+    # ------------- 6) 本地/内网 Ollama（Llama/Qwen/DeepSeek-R1 等本地模型都能跑） -------------
+    if provider in {"ollama", "local"}:
+        from langchain_ollama import ChatOllama
+
+        final_base_url = base_url or _get_secret("ollama_base_url", "OLLAMA_BASE_URL", "OLLAMA_HOST") or "http://localhost:11434"
+
+        params = dict(
+            model=model or "qwen2.5:latest",
+            base_url=final_base_url,
+            temperature=temperature,
+            num_gpu=999,  # 使用所有GPU层
+            num_thread=8,  # CPU线程数
+            num_ctx=32768,  # 上下文长度
+            **kwargs,
+        )
+        # ChatOllama 常用 num_predict 对应 max_tokens
+        if max_tokens is not None and "num_predict" not in params:
+            params["num_predict"] = max_tokens
+        return ChatOllama(**params)
+
+    # ------------- 7) OpenAI-Compatible 通用入口（一个口子打通很多平台） -------------
+    # 例如 openrouter/groq/together/fireworks/vllm/oneapi/siliconflow 等
+    if provider in {"openai_compat", "compat", "openrouter", "groq", "together", "fireworks", "vllm", "oneapi", "siliconflow"}:
+        from langchain_openai import ChatOpenAI
+
+        # 约定：LLM_key 里可以放 {provider}_base_url / {provider}，也可用环境变量
+        final_base_url = base_url or _get_secret(f"{provider}_base_url", f"{provider.upper()}_BASE_URL", "OPENAI_COMPAT_BASE_URL")
+        api_key = _get_secret(provider, f"{provider.upper()}_API_KEY", "OPENAI_COMPAT_API_KEY", "API_KEY")
+
+        if not final_base_url:
+            raise EnvironmentError(f"未配置 {provider} 的 base_url（{provider}_base_url / {provider.upper()}_BASE_URL）。")
+
+        params = dict(
+            model=model,
+            api_key=api_key or "EMPTY",
+            base_url=final_base_url,
+            temperature=temperature,
+            timeout=timeout,
+            streaming=streaming,
+            **kwargs,
+        )
+        if max_tokens is not None:
+            params["max_tokens"] = max_tokens
+        return ChatOpenAI(**params)
+
+    raise ValueError(f"不支持的 llm provider: {provider}（llm_name={llm_name}）")
+
+def _get_secret(*candidates: str) -> Optional[str]:
+    """优先从 LLM_key 取，其次从环境变量取。"""
+    for k in candidates:
+        if not k:
+            continue
+        v = None
+        # config dict
+        try:
+            v = LLM_key.get(k)
+        except Exception:
+            v = None
+        if v:
+            return v
+        # env
+        v = os.getenv(k)
+        if v:
+            return v
+    return None
+
+def _split_provider(name: str) -> Tuple[Optional[str], str]:
+    """
+    支持两种传参：
+      1) 仅模型名： "gpt-4o" / "llama3.1" / "qwen2.5:latest"
+      2) provider:model： "openai:gpt-4o" / "ollama:llama3.1" / "openrouter:xxx"
+    """
+    s = (name or "").strip()
+    if ":" in s:
+        p, m = s.split(":", 1)
+        # 注意：ollama 的 model 经常也含 ':'（tag），例如 qwen2.5:latest
+        # 所以我们只把“第一个冒号”当 provider 分隔符，后面的属于 model
+        if p.lower() in {
+            "openai", "oai", "deepseek", "tongyi", "qwen", "hunyuan",
+            "ollama", "local",
+            "openai_compat", "compat",
+            "openrouter", "groq", "together", "fireworks", "vllm", "oneapi", "siliconflow"
+        }:
+            return p.strip().lower(), m.strip()
+    return None, s
 
 def call_llm(messages,llm:str="deepSeek") -> str:
     """
