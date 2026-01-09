@@ -41,7 +41,6 @@ LLM_key = {
     "openai_base_url": os.getenv("OPENAI_BASE_URL"),
 
     # ===== DeepSeek =====
-    # 你之前用的是 LLM_key.get("deepSeek")，建议保留这个键名以兼容旧代码
     "deepSeek": os.getenv("DEEPSEEK_API_KEY") or os.getenv("DEEPSEEK_KEY"),
 
     # ===== 通义千问（DashScope / Tongyi）=====
@@ -59,15 +58,15 @@ LLM_key = {
     "openrouter": os.getenv("OPENROUTER_API_KEY"),
     "openrouter_base_url": os.getenv("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1",
 
-    # Groq（如果你用）
+    # Groq（如果用）
     "groq": os.getenv("GROQ_API_KEY"),
     "groq_base_url": os.getenv("GROQ_BASE_URL") or "https://api.groq.com/openai/v1",
 
-    # Together（如果你用）
+    # Together（如果用）
     "together": os.getenv("TOGETHER_API_KEY"),
     "together_base_url": os.getenv("TOGETHER_BASE_URL") or "https://api.together.xyz/v1",
 
-    # Fireworks（如果你用）
+    # Fireworks（如果用）
     "fireworks": os.getenv("FIREWORKS_API_KEY"),
     "fireworks_base_url": os.getenv("FIREWORKS_BASE_URL") or "https://api.fireworks.ai/inference/v1",
 
